@@ -28,25 +28,32 @@ typedef struct NODE{
 } NODE;
 
 typedef struct BUCKETELEMENT{
-	double* tentDist;
+	double* tentDist;//-1.0 denotes infinite distance  //-2.0 just initialized
 	int* nodeIds;
 	int maxNodes;
 	int numberOfNodes;
+	int index;
 } BUCKETELEMENT;
 
 NODE* New_grapg(int numberOfNodes){
 	NODE *newGraph= calloc(numberOfNodes, sizeof(NODE));
 	    assert(newGraph != NULL);
+	int i=0;
+	for(i=0;i<numberOfNodes;i++){
+		newGraph->numberOfEdges=0;
+	}
 
-	newGraph->numberOfEdges=0;
 	return newGraph;
 }
 
 BUCKETELEMENT* New_Bucket(int numberOfBuckets){
 	BUCKETELEMENT *newBucket = calloc(numberOfBuckets, sizeof(BUCKETELEMENT));
 		assert(newBucket!=NULL);
-
-	newBucket->numberOfNodes=0;
+	int i=0;
+	for(i=0;i<numberOfBuckets;i++){
+		newBucket->index=-2;//-2 just initialized
+		newBucket->numberOfNodes=0;
+	}
 	return newBucket;
 }
 
@@ -160,18 +167,7 @@ main(int argc, char *argv[])
 	int			tag = 0;		/* tag for messages */
 	char		message[100];	/* storage for message */
 	MPI_Status	status ;		/* return status for receive */
-	char		*nameOfGraphFile;
-	char line[80];
-	long elapsed_seconds;
-	int sizeOfScatteredList;
-	FILE *fr;            /* declare the file pointer */
-	int *sizeOfGraph = NULL;
-	NODE *graph= NULL;
-	int *ind= NULL;
-	int *bcastBuff = NULL;
-	int maxSize;
-	NODE *localScatteredReceiveList;
-	NODE *globalScatteredList;
+
 
 	/* start up MPI */
 	MPI_Init(&argc, &argv);
@@ -181,7 +177,25 @@ main(int argc, char *argv[])
 
 	/* find out number of processes */
 	MPI_Comm_size(MPI_COMM_WORLD, &num_procs); 
+
+	/*declarations and initializations*/
+	int tempCountsPerProcess[num_procs-1];
+	char		*nameOfGraphFile;
+	char line[80];
+	long elapsed_seconds;
+	int sizeOfScatteredList;
+	FILE *fr;            /* declare the file pointer */
+	int *sizeOfGraph = NULL;
+	NODE *graph= NULL;
+	int *ind= NULL;
+	int maxSize;
+	NODE *localScatteredReceiveList;
+	NODE *globalScatteredList;
+	BUCKETELEMENT *localBucketArray;
 	NEWARRAY(sizeOfGraph,1);
+	memset( tempCountsPerProcess, 0, num_procs*sizeof(int) );//for c99 compiler
+	/*end of declarations and initializations*/
+
 	if(my_rank==0){
 		if(argc < 2){
 			printf("No Arguments \n Arguments:\n name of graph file \nintial delta value \n");
@@ -208,7 +222,6 @@ main(int argc, char *argv[])
 				 /* get a line, up to 80 chars from fr.  done if NULL */
 				 sscanf (line, "%ld", &elapsed_seconds);
 				 /* convert the string to a double int */
-
 				 if(*sizeOfGraph<1){
 					 printf("error: The size of the graph is  < 1 \n");
 					 exit(1);
@@ -218,43 +231,30 @@ main(int argc, char *argv[])
 					 readEdges(graph,line);
 				 }
 			}
-
 		}
+
 		srand(clock());
-
 		int counter=0;
-
-		int countsPerProcess[num_procs];
-
-		memset( countsPerProcess, 0, num_procs*sizeof(int) );//for c99 compiler
-
+		int countsPerProcess[num_procs-1];
+		memset( countsPerProcess, 0, (num_procs-1)*sizeof(int) );//for c99 compiler
 		NEWARRAY(ind,*(sizeOfGraph)-1);
-
 		for(counter=0;counter<*sizeOfGraph;counter++){
 			ind[counter]=get_randomNumber(0,num_procs);//generate the randomly assignments of nodes to processes
 			countsPerProcess[ind[counter]]++;
 		}
-
 		maxSize=0;
 		for(counter=0;counter<num_procs;counter++){
 			if (maxSize<countsPerProcess[counter]){
 				maxSize=countsPerProcess[counter];
 			}
 		}
-
 		sizeOfScatteredList= maxSize*num_procs;
 		globalScatteredList=New_grapg(sizeOfScatteredList);
-
-		int tempCountsPerProcess[num_procs];//
-		memset( tempCountsPerProcess, 0, num_procs*sizeof(int) );//for c99 compiler
-
 		for(counter=0;counter<*sizeOfGraph;counter++){
-
-			*(globalScatteredList+maxSize*(ind[counter]-1))=*(graph+counter);
+			*(globalScatteredList+maxSize*(ind[counter]-1)+tempCountsPerProcess[(ind[counter]-1)])=*(graph+counter);
 			tempCountsPerProcess[(ind[counter]-1)]++;
-
 		}
-		printf("in here   \n");
+		printf("in here \n");
 	}
 	/* Declaration of new datatype */
 	const int nitems=5;
@@ -287,6 +287,7 @@ main(int argc, char *argv[])
 		NEWARRAY(ind,*(sizeOfGraph)-1);
 	}
 		assert(ind  != NULL);
+	MPI_Bcast(tempCountsPerProcess,num_procs-1,MPI_INT,0,MPI_COMM_WORLD);
 	MPI_Bcast(ind,(*sizeOfGraph)-1,MPI_INT,0,MPI_COMM_WORLD);
 	printf("after 2 bcast my_rank=%d \n",my_rank);
 	MPI_Bcast(&sizeOfScatteredList,1,MPI_INT,0,MPI_COMM_WORLD);
@@ -297,6 +298,16 @@ main(int argc, char *argv[])
 	printf("before SCATTER my_rank=%d \n",my_rank);
 	MPI_Scatter(globalScatteredList,maxSize,mpi_local_counts_type,localScatteredReceiveList,maxSize,mpi_local_counts_type,0,MPI_COMM_WORLD);
 	printf("after SCATTER my_rank=%d \n",my_rank);
+
+	localBucketArray=New_Bucket(2);//initial we start with only the 0 bucket and the infinite distance bucket
+	(localBucketArray+1)->index=-1;//go to the bucket that holds infinite tentative distances
+	(localBucketArray)->index=0;//go to the bucket that holds the source node
+	/* fill the all the local nodes to the infinite bucket*/
+	int ll=0;
+	for(ll=0;ll<tempCountsPerProcess[my_rank];ll++){
+		pushDistanceAndNode(localBucketArray+1,(localScatteredReceiveList+ll)->nodeId,-2.0);
+	}
+
 	///send the buckets ??or send the nodes??
 	/*
 	if(*sizeOfGraph%num_procs==0){
