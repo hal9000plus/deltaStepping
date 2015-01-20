@@ -44,6 +44,29 @@ typedef struct REQUESTS{
 	double tendDistanceOfSource;
 }REQUESTS;
 
+typedef struct REAMOVEDNODES{
+	int removedCount;//the count of the removedNodes
+	int *removedNodesIds;//the removed nodes
+	int sizeOfRemovedNodesIds;
+} REAMOVEDNODES;
+
+int pushToRemovedNodes(int nodeId,REAMOVEDNODES *removedNodes){
+	if(removedNodes==NULL){
+		NEWARRAY(removedNodes,10);
+		removedNodes->sizeOfRemovedNodesIds=10;
+		removedNodes->removedCount=0;
+	}
+	if(removedNodes->removedCount==removedNodes->sizeOfRemovedNodesIds){
+		NEWARRAY(removedNodes,removedNodes->sizeOfRemovedNodesIds*2);
+		removedNodes->sizeOfRemovedNodesIds=removedNodes->sizeOfRemovedNodesIds*2;
+		(removedNodes->removedNodesIds)+removedNodes->removedCount=nodeId;
+		removedNodes->removedCount++;
+	}else{
+		(removedNodes->removedNodesIds)+removedNodes->removedCount=nodeId;
+		removedNodes->removedCount++;
+	}
+}
+
 NODE* New_grapg(int numberOfNodes){
 	NODE *newGraph= calloc(numberOfNodes, sizeof(NODE));
 	    assert(newGraph != NULL);
@@ -51,7 +74,6 @@ NODE* New_grapg(int numberOfNodes){
 	for(i=0;i<numberOfNodes;i++){
 		newGraph->numberOfEdges=0;
 	}
-
 	return newGraph;
 }
 
@@ -78,7 +100,16 @@ BUCKETELEMENT* resizeBucket(BUCKETELEMENT* bucketArray,int newSize,int oldSize){
 	}
 	return bucketArray;
 }
-
+void buildFinalArray(REQUESTS *localRequests,int nodeId,double tentDist,int sizeOfGraph){
+	if(localRequests==NULL){
+		NEWARRAY(localRequests,1);
+		NEWARRAY(localRequests->targetId,sizeOfGraph);
+		NEWARRAY(localRequests->weightSourceToTarget,sizeOfGraph);
+		localRequests->numberOfelements=0;
+	}
+	localRequests->targetId+nodeId=nodeid;
+	localRequests->weightSourceToTarget+nodeId=tentDist;
+}
 void buildRequests(NODE aNode,REQUESTS *lightEdgesRequests,double delta,double tendDistSource){
 	int neigboursSize=aNode.numberOfEdges;
 	int kk=0;
@@ -133,7 +164,7 @@ int isBucketEmpty(BUCKETELEMENT *aBucketElement,int *removedNodes,int size){
 		int i=0;
 		int notFound=0;
 		for(i=0;i<aBucketElement->numberOfNodes;i++){
-			if(!containtsElem(aBucketElement->nodeIds,removedNodes,*removedNodes)){
+			if(!containtsElem(aBucketElement->nodeIds,removedNodes,size)){
 				notFound=1;
 				break;
 			}
@@ -151,7 +182,7 @@ int isBucketEmpty(BUCKETELEMENT *aBucketElement){
 
 int containtsElem(int searchNode,int *searchlist,int size){
 	int i;
-	for(i=1;i<size;i++){
+	for(i=0;i<size;i++){
 		if(searchlist[i]==searchNode){
 			return 1;
 		}else{
@@ -160,15 +191,7 @@ int containtsElem(int searchNode,int *searchlist,int size){
 	}
 }
 
-int pushToRemovedNodes(int nodeId,int pos,int arr,int *sizeOfRemoveArray){
-	if(*(arr)==*sizeOfRemoveArray-1){
-		*sizeOfRemoveArray=2*(*sizeOfRemoveArray);
-		RESIZEARRAY(arr,sizeOfRemoveArray);
-	}else{
-		*(arr+pos)=nodeId;
-		(*arr)++;
-	}
-}
+
 
 void findnextNonEmptyBucket(BUCKETELEMENT *localBucketArray,int currentBucketIndex,int *localMinBuckInd,int localBucketSize){
 	int ii=0;
@@ -201,6 +224,7 @@ void pushEdge(NODE *anode,int edgeId,double edgeWeight){
 		anode->maxEdges=10;
 	}
 	/*we dynamically allocate space for the edges */
+	
 	if(anode->maxEdges==anode->numberOfEdges){
 		anode->maxEdges=anode->maxEdges*2;
 		RESIZEARRAY((anode->edgeList),anode->maxEdges);
@@ -287,7 +311,7 @@ double findTargetDistance(BUCKETELEMENT *locBucketArray,int nodeId,int sizeOfBuc
 
 int findNextBucketIndex(int *globalMinBuffer,int size){
 	int ii=0;
-	int tempMin=size;
+	int tempMin=size;///pick a max size 
 	int allmin=1;
 	for(ii=0;ii < size; ii++){
 		if(*globalMinBuffer!=0 && (*globalMinBuffer)<tempMin ){
@@ -307,6 +331,7 @@ int findNextBucketIndex(int *globalMinBuffer,int size){
 void readEdges(NODE* graph,const char *line){
 	char *token;
 	short counter=0;
+	
 	int startNode,endNode;
 	double weight;
 	const char s[2] = " ";
@@ -328,7 +353,7 @@ void readEdges(NODE* graph,const char *line){
 	    token = strtok(NULL, s);
 	    counter++;
 	 }
-	 pushEdge(graph+startNode-1,endNode,weight);
+	 pushEdge(graph+startNode,endNode,weight);//Check if the index of the graph is correct 
 }
 
 int 
@@ -382,6 +407,7 @@ main(int argc, char *argv[])
 	int terminateFlag=0;
 	int stillWorking;
 	int *stillWorkingArray=NULL;
+	
 	NEWARRAY(stillWorkingArray,num_procs-1);
 	/*end of declarations and initializations*/
 
@@ -407,6 +433,7 @@ main(int argc, char *argv[])
 			*sizeOfGraph=atoi(line);
 			printf("first line %s \n",line);
 			printf("the size of the graph %d \n",*sizeOfGraph);
+			int nodeCounter=0;
 			while(fgets(line, 80, fr) != NULL)
 			{
 				 /* get a line, up to 80 chars from fr.  done if NULL */
@@ -520,15 +547,13 @@ main(int argc, char *argv[])
 	}
 	currentBucketIndex=1;//the infinite bucket is the bucket array element 0;
 	/*create requests */
-
-	while(terminateFlag){
-
-		int *removedNodesList;//the 0 index is used for the size of the elements stored in array
-		int sizeOfremoveArray=localBucketArray->numberOfNodes+1;
-		NEWARRAY(removedNodesList,sizeOfremoveArray);
-		*removedNodesList=0;
+	
+	while(!terminateFlag){
+		REAMOVEDNODES *R=NULL;
+		NEWARRAY(R,1);
+		R->removedNodesIds=NULL
 		int isHeavyEgdesProcessed=-1;
-		int isBucketEmptyFlag=isBucketEmpty( (localBucketArray+currentBucketIndex),removedNodesList );
+		int isBucketEmptyFlag=isBucketEmpty( (localBucketArray+currentBucketIndex),R->removedNodesIds,R->removedCount );
 
 		while( !isBucketEmptyFlag || !isHeavyEgdesProcessed  ){
 
@@ -538,6 +563,7 @@ main(int argc, char *argv[])
 			NEWARRAY(requestsToSendList,1);
 			requestsToSendList->targetId=NULL;
 			requestsToSendList->weightSourceToTarget=NULL;
+			requestsToSendList->numberOfelements=0;
 			NEWARRAY(requestsToReceive,num_procs-1);///
 			requestsToReceive->targetId=NULL;
 			requestsToReceive->weightSourceToTarget=NULL;
@@ -546,13 +572,15 @@ main(int argc, char *argv[])
 			/* iterate all the nodes the bucket */
 			for(ll=0;ll<(localBucketArray+currentBucketIndex)->numberOfNodes;ll++){
 				//iterate all the edges
-				int indexToInsert=0;
+				
 				int nodeToProcess=*((localBucketArray+currentBucketIndex)->nodeIds+ll);
 				int indexInScatteredList=*((localBucketArray+currentBucketIndex)->bucket2Index+ll);
 				double sourceTentDist=*((localBucketArray+currentBucketIndex)->tentDist+ll);
-				if(!containtsElem(nodeToProcess,removedNodesList,*removedNodesList)){//if itis not inside the removed list
+				if(!containtsElem(nodeToProcess,R->removedNodesIds,R->removedCount)){//if itis not inside the removed list
 					buildRequests(nodeToProcess,requestsToSendList,delta,sourceTentDist);
-					pushToRemovedNodes(nodeToProcess,indexToInsert+1,removedNodesList,&sizeOfremoveArray);
+				
+					pushToRemovedNodes(nodeToProcess,R);
+					
 					indexToInsert++;
 				}else if(isHeavyEgdesProcessed==0){
 					buildHeavyRequests(nodeToProcess,requestsToSendList,delta,sourceTentDist);
@@ -599,7 +627,7 @@ main(int argc, char *argv[])
 				free(requestsToReceive->targetId);
 				free(requestsToSendList);
 				free(requestsToReceive);
-				isBucketEmptyFlag=isBucketEmpty( (localBucketArray+currentBucketIndex),removedNodesList );
+				isBucketEmptyFlag=isBucketEmpty( (localBucketArray+currentBucketIndex),R->removedNodesIds,R->removedCount );
 				if(isBucketEmptyFlag){
 					isHeavyEgdesProcessed++;
 				}
@@ -609,7 +637,8 @@ main(int argc, char *argv[])
 
 		}
 
-		free(removedNodesList);
+		free(R->removedNodesIds);
+		free(R);
 		int ii=0;
 		terminateFlag=1;
 		for(ii=0;ii<num_procs-1;ii++){
@@ -652,14 +681,46 @@ main(int argc, char *argv[])
 			currentBucketIndex=findNextBucketIndex(globalMinBuffer,num_procs-1);
 			if(currentBucketIndex==0){
 				terminateFlag=1;
+			}else{
+				terminateFlag=0;
 			}
 		}
 	}
-	MPI_Barrier(MPI_COMM_WORLD);
-
-	MPI_Gather(&localMinBuckInd,1,MPI_INT,globalMinBuffer,1,MPI_INT,MPI_COMM_WORLD);
-
-
+		
+	/*allocate variables */
+	REQUESTS *requestsToFinalArray;
+	REQUESTS *requestsToReceiveFinal;
+	NEWARRAY(requestsToFinalArray,1);
+	requestsToFinalArray->targetId=NULL;
+	requestsToFinalArray->weightSourceToTarget=NULL;
+	requestsToFinalArray->numberOfelements=0;
+	NEWARRAY(requestsToReceiveFinal,num_procs-1);///
+	requestsToReceiveFinal->targetId=NULL;
+	requestsToReceiveFinal->weightSourceToTarget=NULL;
+	/*end of allocate variables */
+	int tempCounter=0;
+	while(tempcounter<localBucketSize){
+		int tempInnerCounter=0;
+		while(tempInnerCounter<localBucketArray->numberOfNodes){
+			buildFinalArray(requestsToFinalArray,localBucketArray->nodeIds,localBucketArray->tentDist,sizeOfGraph);
+			tempInnerCounter++;
+		}
+	
+		tempCounter++;
+	}
+	MPI_Barrier(MPI_COMM_WORLD);	
+	MPI_Gather( requestsToFinalArray, 1, mpi_request_type, requestsToReceiveFinal, 1, mpi_request_type, 0, MPI_COMM_WORLD);
+	if(my_rank==0){
+		tempCounter=0;
+		while( tempCounter < num_procs){
+			tempInnerCounter=0;
+			while(tempInnerCounter<(requestsToFinalArray+tempCounter)->numberOfelements){
+				printf("NodeID:=%d---> distance:=%d",(requestsToFinalArray+tempInnerCounter)->targetId,(requestsToFinalArray+tempCounter)->weightSourceToTarget);
+				tempInnerCounter++;
+			}
+			tempCounter++;
+		}
+	}
 	/* shut down MPI */
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize(); 
