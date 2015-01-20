@@ -96,7 +96,7 @@ void buildRequests(NODE aNode,REQUESTS *lightEdgesRequests,double delta,double t
 		if( *((aNode.weigthsList)+kk) <= delta ){
 			*(lightEdgesRequests->(targetId+innerCounter+lightEdgesRequests->numberOfelements))=*(aNode.edgeList+kk);
 			*(lightEdgesRequests->(weightSourceToTarget+innerCounter+lightEdgesRequests->numberOfelements)=*((aNode.weigthsList)+kk);
-			lightEdgesRequests->(numberOfelements++);
+			lightEdgesRequests->numberOfelements++;
 			innerCounter++;
 		}
 	}
@@ -533,7 +533,6 @@ main(int argc, char *argv[])
 		while( !isBucketEmptyFlag || !isHeavyEgdesProcessed  ){
 
 			/*allocate variables */
-			int sourceNodesRequests[(localBucketArray+currentBucketIndex)->numberOfNodes];
 			REQUESTS *requestsToSendList;
 			REQUESTS *requestsToReceive;
 			NEWARRAY(requestsToSendList,1);
@@ -570,21 +569,23 @@ main(int argc, char *argv[])
 			/* all processes perform Relaxations */
 				for( tempOuterCounter=0 ; tempOuterCounter < num_procs-1; tempOuterCounter++){
 					for(tempInnerCounter=0 ; tempInnerCounter < (requestsToReceive+tempOuterCounter)->numberOfelements ; tempInnerCounter){
-						int currentTargeNodeId=*( (requestsToReceive+tempOuterCounter)->targetId+tempInnerCounter )
-						if( ind[currentTargeNodeId]==my_rank ){//if true the the node must be someware in the bucket O(n) time for searching ///or improvement we could use a hashSet ..
-							int targetNodeBucketIndex=0;
-							int targeNodeIndexInsideBucket=0;
-							double tentDistSource=(requestsToReceive+tempOuterCounter)->tendDistanceOfSource;
-							double tentDistTarget=findTargetDistance(localBucketArray,currentTargeNodeId,localBucketSize,&targetNodeBucketIndex,&targeNodeIndexInsideBucket);
-							double sourceToTargetWeight=*((requestsToReceive+tempOuterCounter)->weightSourceToTarget+tempInnerCounter);
+						if((requestsToReceive+tempOuterCounter)->numberOfelements!=0){
+							int currentTargeNodeId=*( (requestsToReceive+tempOuterCounter)->targetId+tempInnerCounter )
+								if( ind[currentTargeNodeId]==my_rank ){//if true the the node must be someware in the bucket O(n) time for searching ///or improvement we could use a hashSet ..
+								int targetNodeBucketIndex=0;
+								int targeNodeIndexInsideBucket=0;
+								double tentDistSource=(requestsToReceive+tempOuterCounter)->tendDistanceOfSource;
+								double tentDistTarget=findTargetDistance(localBucketArray,currentTargeNodeId,localBucketSize,&targetNodeBucketIndex,&targeNodeIndexInsideBucket);
+								double sourceToTargetWeight=*((requestsToReceive+tempOuterCounter)->weightSourceToTarget+tempInnerCounter);
 
-							if( (tentDistSource+sourceToTargetWeight < tentDistTarget) || ( tentDistTarget == ( -0.1 ) ) ){
-								popDistanceAndNode(localBucketArray+targetNodeBucketIndex);
-								int arrayIndexToInsertNeWdDist=( (tentDistSource+sourceToTargetWeight)/(int)delta)+1;
-								if( (arrayIndexToInsertNeWdDist+1) >= localBucketSize){
-									RESIZEARRAY(localBucketArray,(arrayIndexToInsertNeWdDist+2));
-									localBucketSize=(arrayIndexToInsertNeWdDist+2);
-									pushDistanceAndNode(localBucketArray+arrayIndexToInsertNeWdDist+1,currentTargeNodeId,tentDistSource+sourceToTargetWeight,arrayIndexToInsertNeWdDist)//change the bucket the node is
+								if( (tentDistSource+sourceToTargetWeight < tentDistTarget) || ( tentDistTarget == ( -0.1 ) ) ){
+									popDistanceAndNode(localBucketArray+targetNodeBucketIndex);
+									int arrayIndexToInsertNeWdDist=( (tentDistSource+sourceToTargetWeight)/(int)delta)+1;
+									if( (arrayIndexToInsertNeWdDist+1) >= localBucketSize){
+										RESIZEARRAY(localBucketArray,(arrayIndexToInsertNeWdDist+2));
+										localBucketSize=(arrayIndexToInsertNeWdDist+2);
+										pushDistanceAndNode(localBucketArray+arrayIndexToInsertNeWdDist+1,currentTargeNodeId,tentDistSource+sourceToTargetWeight,arrayIndexToInsertNeWdDist)//change the bucket the node is
+									}
 								}
 							}
 						}
@@ -592,7 +593,6 @@ main(int argc, char *argv[])
 				}
 
 				/* deallocate space for dynamically allocated variables */
-				int sourceNodesRequests[(localBucketArray+currentBucketIndex)->numberOfNodes];
 				free(requestsToSendList->targetId);
 				free(requestsToSendList->weightSourceToTarget);
 				free(requestsToReceive->weightSourceToTarget);
@@ -605,10 +605,13 @@ main(int argc, char *argv[])
 				}
 				MPI_Barrier(MPI_COMM_WORLD);
 				stillWorking=(!isBucketEmptyFlag || !isHeavyEgdesProcessed);
-				MPI_Allgather(&stillWorking,1,MPI_INT,stillWorkingArray,1,MPI_INT,MPI_COMM_WORLD)
+				MPI_Allgather(&stillWorking,1,MPI_INT,stillWorkingArray,1,MPI_INT,MPI_COMM_WORLD);
+
 		}
+
 		free(removedNodesList);
 		int ii=0;
+		terminateFlag=1;
 		for(ii=0;ii<num_procs-1;ii++){
 			if(*(stillWorkingArray+ii)!=0){
 				terminateFlag=0;
@@ -616,13 +619,35 @@ main(int argc, char *argv[])
 			}
 		}
 
-		if(isBucketEmptyFlag && !terminateFlag && !stillWorking){
+		if(isBucketEmptyFlag && !terminateFlag && !stillWorking){//other processes still work  but current has no more work
+			/*allocate variables */
+			REQUESTS *requestsToSendList;
+			REQUESTS *requestsToReceive;
+			NEWARRAY(requestsToSendList,1);
+			requestsToSendList->targetId=NULL;
+			requestsToSendList->weightSourceToTarget=NULL;
+			requestsToSendList->numberOfelements=0;
+			NEWARRAY(requestsToReceive,num_procs-1);///
+			requestsToReceive->targetId=NULL;
+			requestsToReceive->weightSourceToTarget=NULL;
+			/*end of allocate variables */
 
-		}else{
+			MPI_Barrier(MPI_COMM_WORLD);
+			MPI_Allgather(requestsToSendList,1,mpi_request_type,requestsToReceive,1,mpi_request_type,MPI_COMM_WORLD);
+			MPI_Barrier(MPI_COMM_WORLD);
+			stillWorking=(!isBucketEmptyFlag || !isHeavyEgdesProcessed);
+
+			free(requestsToSendList->targetId);
+			free(requestsToSendList->weightSourceToTarget);
+			free(requestsToReceive->weightSourceToTarget);
+			free(requestsToReceive->targetId);
+			free(requestsToSendList);
+			free(requestsToReceive);
+			/* deallocate space for dynamically allocated variables */
+
+		}else if(isBucketEmptyFlag && terminateFlag && !stillWorking){//all processes finished processing their bucket check if there is a bucket to process
+
 			findnextNonEmptyBucket(localBucketArray,currentBucketIndex,&localMinBuckInd);
-			if(localMinBuckInd==0){
-				stillWorking=0;
-			}
 			MPI_Allgather(&localMinBuckInd,1,MPI_INT,globalMinBuffer,1,MPI_INT,MPI_COMM_WORLD)
 			currentBucketIndex=findNextBucketIndex(globalMinBuffer,num_procs-1);
 			if(currentBucketIndex==0){
@@ -630,8 +655,9 @@ main(int argc, char *argv[])
 			}
 		}
 	}
+	MPI_Barrier(MPI_COMM_WORLD);
 
-
+	MPI_Gather(&localMinBuckInd,1,MPI_INT,globalMinBuffer,1,MPI_INT,MPI_COMM_WORLD);
 
 
 	/* shut down MPI */
