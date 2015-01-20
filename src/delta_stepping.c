@@ -164,6 +164,7 @@ int containtsElem(int searchNode,int *searchlist,int size){
 			return 0;
 		}
 	}
+	return 0;///to fix
 }
 
 int isBucketEmpty(BUCKETELEMENT *aBucketElement,int *removedNodes,int size){
@@ -303,7 +304,7 @@ double findTargetDistance(BUCKETELEMENT *locBucketArray,int nodeId,int sizeOfBuc
 			}
 		}
 	}
-
+	return 0.0;////tofix
 }
 
 int findNextBucketIndex(int *globalMinBuffer,int size){
@@ -487,14 +488,6 @@ main(int argc, char *argv[])
 	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &mpi_local_counts_type);
 	MPI_Type_commit(&mpi_local_counts_type);
 	/* end of new datatype */
-
-	/* Declaration of new datatype */
-	typedef struct REQUESTS{
-		int *targetId;
-		int numberOfelements;
-		double *weightSourceToTarget;
-		double tendDistanceOfSource;
-	}REQUESTS;
 
 	const int nitems2=3;
 	int          blocklengths2[4] = {1,1,1,1};
@@ -704,7 +697,7 @@ main(int argc, char *argv[])
 	while(tempCounter<localBucketSize){
 		int tempInnerCounter=0;
 		while(tempInnerCounter<localBucketArray->numberOfNodes){
-			buildFinalArray(requestsToFinalArray,localBucketArray->nodeIds,*(localBucketArray->tentDist+tempInnerCounter),sizeOfGraph);
+			buildFinalArray(requestsToFinalArray+tempCounter,*(localBucketArray->nodeIds+tempInnerCounter),*(localBucketArray->tentDist+tempInnerCounter),*sizeOfGraph);
 			tempInnerCounter++;
 		}
 
@@ -717,7 +710,7 @@ main(int argc, char *argv[])
 		while( tempCounter < num_procs){
 			int tempInnerCounter=0;
 			while(tempInnerCounter<(requestsToFinalArray+tempCounter)->numberOfelements){
-				printf("NodeID:=%d---> distance:=%d",(requestsToFinalArray+tempInnerCounter)->targetId,(requestsToFinalArray+tempCounter)->weightSourceToTarget);
+				printf("NodeID:=%d---> distance:=%f",*(requestsToFinalArray+tempCounter)->targetId+tempInnerCounter,*(requestsToFinalArray+tempCounter)->weightSourceToTarget+tempInnerCounter);
 				tempInnerCounter++;
 			}
 			tempCounter++;
